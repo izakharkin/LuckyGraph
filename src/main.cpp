@@ -11,8 +11,19 @@
 
 #include <cfloat>
 
-using std::priority_queue;
+#if __cplusplus == 201402L // C++14
+
 using std::make_unique;
+
+#else // C++11
+
+template < typename T, typename... CONSTRUCTOR_ARGS >
+        std::unique_ptr<T> make_unique( CONSTRUCTOR_ARGS&&... constructor_args )
+        { return std::unique_ptr<T>( new T( std::forward<CONSTRUCTOR_ARGS>(constructor_args)... ) ); }
+
+#endif // __cplusplus == 201402L
+
+using std::priority_queue;
 using std::make_shared;
 using std::shared_ptr;
 using std::unique_ptr;
@@ -110,6 +121,7 @@ class EdgeList {
  public:
   EdgeList();
   EdgeList(const vector<vector<int>>& adj_matrix);
+  EdgeList(const AdjList& adj_list);
   size_t Size() const;
   vector<Edge> GetEdges() const;
  private:
@@ -128,6 +140,14 @@ EdgeList::EdgeList(const vector<vector<int>>& adj_matrix) {
         double weight = adj_matrix[i][j];
         edge_list_.push_back(Edge(Vertex(i), Vertex(j), weight));
       }
+    }
+  }
+}
+
+EdgeList::EdgeList(const AdjList& adj_list) {
+  for (int i = 0; i < adj_list.Size(); ++i) {
+    for (auto item : adj_list.GetNeighbours(i)) {
+      edge_list_.push_back(Edge(Vertex(i), Vertex(item.index_), item.weight_));
     }
   }
 }
@@ -219,6 +239,7 @@ class CycleStat : IStat {
   void Init() override;
   bool CycleFound(const CycleSign&);
   bool IsCyclic() const;
+  CycleSign GetCycleSign();
  private:
   CycleType cycle_type_;
   CycleSign cycle_sign_;
@@ -258,7 +279,9 @@ class Graph {
   double GetWeight(int first_vertex, int second_vertex) const;
 
   bool HasNegativeEdges() const;
+
   bool HasCycle() const;
+  bool HasNegativeCycle() const;
 
   bool IsConnected() const;
   bool IsRarefied() const;
@@ -271,6 +294,9 @@ class Graph {
   void UpdateEdgesStat(unique_ptr<EdgesStat>);
   void UpdateCycleStat(unique_ptr<CycleStat>);
   void UpdateCompStat(unique_ptr<ComponentStat>);
+
+  bool IsNetwork() const;
+  // TODO: here must be flow algorithms
  private:
   int node_count_;
   int edge_count_;
@@ -358,6 +384,20 @@ bool Graph::HasNegativeEdges() const {
 bool Graph::HasCycle() const {
   return cycle_stat_->IsCyclic();
 }
+
+vector<double> FordBellman(const Graph&, int);
+
+bool Graph::HasNegativeCycle() const {
+  if (cycle_stat_ == nullptr) {
+    FordBellman(*this, 0);
+  }
+  if (cycle_stat_->GetCycleSign() == CycleSign::kNone) {
+    return false;
+  } else if (cycle_stat_->GetCycleSign() == CycleSign::kNegativeCycle) {
+    return true;
+  }
+}
+
 
 bool Graph::IsConnected() const {
   return comp_stat_->GetComponentsCount() == 1;
@@ -571,7 +611,7 @@ bool Relax(const Edge& edge, vector<double>& distance) {
 
 vector<double> FordBellman(Graph& graph, int start_vertex) {
   vector<double> distance(graph.GetNodeCount(), kInf);
-  distance[start_vertex] = 0;
+  distance[start_vertex] = 0.0;
   EdgeList edge_list = graph.GetEdgeList();
   vector<Edge> edges = edge_list.GetEdges();
   for (int i = 0; i < graph.GetNodeCount() - 1; ++i) {

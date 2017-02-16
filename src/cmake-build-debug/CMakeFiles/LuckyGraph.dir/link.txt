@@ -1,0 +1,1 @@
+/usr/bin/c++    -std=c++11 -std=c++14 -g   CMakeFiles/LuckyGraph.dir/main.cpp.o  -o LuckyGraph 
